@@ -1,134 +1,91 @@
-// Boot and the one loop: input is read every frame, the world advances in fixed 1/60 s steps
-// (several in a slow frame, none in a fast one), and the renderer paints what is there. The game
-// moves between four screens: title, play, paused and game over.
-//
-// ?seed=N fixes the falling pattern. ?shot=start|play|end (with &seed=N) stages that scene
-// instead of running the loop, paints it twice and sets window.__shotReady for a screenshot.
-import { BEST_KEY, LIVES, STEP } from './config.js';
+// Boot and the one loop: input is read every frame, the game advances in fixed
+// 1/60 s steps (several in a slow frame, none in a fast one), the renderer paints
+// what is there and the HUD follows. ?shot=start|play|end (with &seed=N) stages
+// that scene instead of running the loop, paints it twice and sets
+// window.__shotReady for a screenshot.
+import { STEP } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_HIT, EVENT_OVER } from './world.js';
-import { ACTION_CONFIRM, ACTION_PAUSE, createInput } from './input.js';
-import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+import { createRenderer } from './render.js';
+import { createHud } from './hud.js';
+import { createInput } from './input.js';
+import { createGame } from './game.js';
 import { stageShot } from './shots.js';
 
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
 const MAX_FRAME = 0.25;
 
 const params = new URLSearchParams(window.location.search);
 const shot = params.get('shot');
 const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
 const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
+const rng = createRandom(seed);
 
 const canvas = document.getElementById('game');
-const status = document.getElementById('status');
-const world = createWorld(createRandom(seed));
-const renderer = createRenderer(canvas);
+const renderer = createRenderer(canvas, rng);
+const hud = createHud((id) => game.buy(id));
+const input = createInput(canvas, (locked) => {
+  // Esc (or Alt-Tab) drops pointer lock: pause a live round instead of letting
+  // the player stand still while bots keep playing.
+  if (!locked && (game.phase === 'live' || game.phase === 'buy')) game.pause();
+});
+const game = createGame(renderer, hud, input, rng);
 
-function readBest() {
-  try {
-    return Number.parseInt(window.localStorage.getItem(BEST_KEY) ?? '0', 10) || 0;
-  } catch {
-    return 0;
-  }
-}
+// Headless self-test hook: drives the match without pointer lock or a mouse.
+window.__steel = {
+  game, renderer,
+  start: () => { game.debugNoLock = true; game.startMatch(); },
+  aimAt(x, y, z) {
+    const p = game.player;
+    const dx = x - p.x, dy = y - p.eyeY, dz = z - p.z;
+    p.yaw = Math.atan2(-dx, -dz);
+    p.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+  },
+  fire() { game.debugFire(); },
+  key(code, down) { window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code })); },
+  debugBot(i) {
+    const b = game.bots[i];
+    return b ? { ...b, path: b.path.slice(), rng: undefined } : null;
+  },
+  canPlant: () => game.canPlantHere(),
+  channel: () => game.channel && { type: game.channel.type, t: +game.channel.t.toFixed(2), frac: +game.channel.frac.toFixed(2) },
+  state: () => ({
+    phase: game.phase, round: game.round, maxRounds: game.maxRounds, winThreshold: game.winThreshold,
+    score: game.score, playerTeam: game.playerTeam, mvp: game.mvp,
+    player: { x: +game.player.x.toFixed(2), z: +game.player.z.toFixed(2), hp: game.player.hp, alive: game.player.alive, credits: game.player.credits, weapon: game.player.weaponId, armor: game.player.armor, helmet: game.player.helmet, hasKit: game.player.hasKit, grenades: game.player.grenades, blindT: +game.player.blindT.toFixed(2), spectateId: game.player.spectateId, roundKills: game.player.roundKills },
+    botsAlive: game.bots.filter((b) => b.alive).length,
+    bots: game.bots.map((b) => ({ id: b.id, team: b.team, x: +b.x.toFixed(1), z: +b.z.toFixed(1), hp: b.hp, alive: b.alive, state: b.state, kills: b.kills, weapon: b.weaponId })),
+    planted: game.devicePlanted, roundT: Math.round(game.roundT),
+    smokes: game.smokes.length, fires: game.fires.length, nades: game.grenades.length,
+  }),
+};
 
-function saveBest(value) {
-  try {
-    window.localStorage.setItem(BEST_KEY, String(value));
-  } catch {
-    // Storage can be off (private windows): the best score then lasts this visit only.
-  }
-}
-
-function runShot(name) {
-  const scene = stageShot(name, world);
+if (shot) {
+  stageShot(shot, game, hud);
   let painted = 0;
+  const t0 = performance.now();
   function paint() {
-    renderer.draw(world.state, scene.screen, scene.best);
+    renderer.update(game, STEP, t0 + painted * 16);
+    hud.update(game);
     painted += 1;
     if (painted < 2) requestAnimationFrame(paint);
     else window.__shotReady = true;
   }
   requestAnimationFrame(paint);
-}
-
-function runGame() {
-  const input = createInput(canvas);
-  let screen = SCREEN_TITLE;
-  let best = readBest();
+} else {
   let accumulator = 0;
   let last = performance.now();
-
-  // Screen readers (and anyone watching the page's text) hear the screen changes and each hit.
-  function announce(message) {
-    status.textContent = message;
-  }
-
-  function startGame() {
-    world.reset();
-    accumulator = 0;
-    screen = SCREEN_PLAY;
-    announce(`Playing. ${LIVES} lives.`);
-  }
-
-  function endGame() {
-    screen = SCREEN_OVER;
-    if (world.state.score > best) {
-      best = world.state.score;
-      saveBest(best);
-    }
-    announce(`Game over. Score ${world.state.score}. Best ${best}.`);
-  }
-
-  function handleActions() {
-    const actions = input.takeActions();
-    if (actions & ACTION_CONFIRM && (screen === SCREEN_TITLE || screen === SCREEN_OVER)) startGame();
-    else if (actions & ACTION_PAUSE && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    } else if (actions & (ACTION_PAUSE | ACTION_CONFIRM) && screen === SCREEN_PAUSED) {
-      screen = SCREEN_PLAY;
-      announce('Playing.');
-    }
-  }
-
-  function step() {
-    if (screen === SCREEN_TITLE) {
-      world.step(STEP, 0, true);
-      return;
-    }
-    const events = world.step(STEP, input.direction(), false);
-    if (events & EVENT_OVER) endGame();
-    else if (events & EVENT_HIT) announce(world.state.lives === 1 ? 'Hit. 1 life left.' : `Hit. ${world.state.lives} lives left.`);
-  }
-
   function frame(now) {
     requestAnimationFrame(frame);
     accumulator += Math.min((now - last) / 1000, MAX_FRAME);
     last = now;
-    handleActions();
-    if (screen === SCREEN_TITLE || screen === SCREEN_PLAY) {
-      while (accumulator >= STEP && (screen === SCREEN_TITLE || screen === SCREEN_PLAY)) {
-        step();
-        accumulator -= STEP;
-      }
-    } else {
-      accumulator = 0;
+    while (accumulator >= STEP) {
+      game.step(STEP);
+      accumulator -= STEP;
     }
-    renderer.draw(world.state, screen, best);
+    renderer.update(game, STEP, now);
+    hud.update(game);
   }
-
-  // Leaving the tab pauses a running game rather than letting blocks fall unseen.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    }
+    if (document.hidden && (game.phase === 'live' || game.phase === 'buy')) game.pause();
   });
-
-  announce('Block Dodger. Press Space or click to start.');
   requestAnimationFrame(frame);
 }
-
-if (shot) runShot(shot);
-else runGame();

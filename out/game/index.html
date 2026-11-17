@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steel Strike — Tactical FPS</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1420;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #eef1f5;
+    user-select: none; -webkit-user-select: none; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #topbar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    text-align: center; text-shadow: 0 1px 4px #000; }
+  #timer { font-size: 30px; font-weight: 800; letter-spacing: 2px; }
+  #scoreLine { font-size: 15px; font-weight: 700; letter-spacing: 1px; margin-top: 2px; }
+  #roundLine { font-size: 12px; color: #9aa3b2; letter-spacing: 2px; margin-top: 2px; }
+  #aliveLine { font-size: 12px; color: #c8cfdb; margin-top: 3px; letter-spacing: 1px; }
+  #killfeed { position: absolute; top: 14px; right: 16px; text-align: right;
+    font-size: 12px; max-width: 440px; text-shadow: 0 1px 3px #000; }
+  .feedRow { margin-bottom: 3px; opacity: 0.95; }
+  .feedWep { color: #ffd27a; margin: 0 4px; }
+  #bl { position: absolute; left: 18px; bottom: 18px; width: 230px; text-shadow: 0 1px 3px #000; }
+  .barLabel { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
+  .bar { height: 10px; background: rgba(255,255,255,0.16); margin: 3px 0 8px; }
+  .bar > div { height: 100%; }
+  #healthFill { background: #4ade80; }
+  #armorFill { background: #5aa2ff; }
+  #br { position: absolute; right: 18px; bottom: 18px; text-align: right; text-shadow: 0 1px 3px #000; }
+  #ammoMag { font-size: 38px; font-weight: 800; line-height: 1; }
+  #ammoRes { font-size: 16px; color: #9aa3b2; }
+  #weaponName { font-size: 14px; font-weight: 700; }
+  #credits { font-size: 16px; color: #ffd27a; font-weight: 800; margin-top: 2px; }
+  #deviceTag { position: absolute; left: 18px; bottom: 108px; color: #ffb020;
+    font-weight: 800; font-size: 13px; letter-spacing: 2px; text-shadow: 0 1px 3px #000; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --sp: 7px; }
+  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #fff;
+    box-shadow: 0 0 2px #000; }
+  #crosshair::before { left: calc(-1px - var(--sp)); top: -1px; width: calc(var(--sp) * 2 + 2px); height: 2px; }
+  #crosshair::after { left: -1px; top: calc(-1px - var(--sp)); width: 2px; height: calc(var(--sp) * 2 + 2px); }
+  #crosshair .dot { position: absolute; left: -2px; top: -2px; width: 4px; height: 4px;
+    background: #fff; border-radius: 50%; box-shadow: 0 0 2px #000; }
+  #crosshair.ads::before, #crosshair.ads::after { background: #ffd27a; }
+  #hitmarker { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px;
+    margin: -13px 0 0 -13px; opacity: 0; pointer-events: none; }
+  #hitmarker.show { animation: hm 0.28s ease-out; }
+  #hitmarker::before, #hitmarker::after { content: ""; position: absolute; left: 12px; top: 0;
+    width: 2px; height: 26px; background: #fff; box-shadow: 0 0 2px #000; }
+  #hitmarker::before { transform: rotate(45deg); }
+  #hitmarker::after { transform: rotate(-45deg); }
+  #hitmarker.head::before, #hitmarker.head::after { background: #ff5a4e; }
+  @keyframes hm { 0% { opacity: 1; transform: scale(1.25); } 100% { opacity: 0; transform: scale(0.9); } }
+  #plantBar { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
+    width: 280px; text-align: center; }
+  #plantLabel { font-size: 13px; font-weight: 800; letter-spacing: 2px; text-shadow: 0 1px 3px #000; }
+  #plantBar .bar { height: 8px; }
+  #plantFill { background: #ffb020; }
+  #hint { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
+    font-size: 14px; font-weight: 700; color: #ffd27a; text-shadow: 0 1px 3px #000; }
+  #banner { position: absolute; left: 50%; top: 26%; transform: translateX(-50%);
+    text-align: center; text-shadow: 0 2px 8px #000; }
+  #bannerMain { font-size: 52px; font-weight: 900; letter-spacing: 6px; }
+  #bannerSub { font-size: 17px; margin-top: 6px; color: #dfe5ee; }
+  /* ---------- Radar ---------- */
+  #radarBox { position: absolute; top: 14px; left: 16px; text-shadow: 0 1px 3px #000; }
+  #radar { display: block; border: 1px solid #3a4356; background: rgba(8,12,20,0.78); }
+  #callout { font-size: 13px; font-weight: 800; letter-spacing: 1px; margin-top: 5px; }
+  #radarAlive { font-size: 12px; color: #c8cfdb; margin-top: 2px; letter-spacing: 1px; }
+  /* ---------- Scope / flash / spectate ---------- */
+  #scope { position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(circle at 50% 50%, transparent 26%, rgba(0,0,0,0.97) 27%); }
+  #scope::before, #scope::after { content: ""; position: absolute; background: rgba(0,0,0,0.9); }
+  #scope::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-1px); }
+  #scope::after { left: 0; top: 50%; width: 100%; height: 2px; transform: translateY(-1px); }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  #spectate { position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%);
+    font-size: 14px; font-weight: 800; letter-spacing: 1px; color: #ffd27a;
+    text-shadow: 0 1px 3px #000; }
+  /* ---------- Scoreboard ---------- */
+  #scoreboard { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 560px; background: rgba(10, 14, 22, 0.94); border: 1px solid #3a4356;
+    padding: 16px 20px; }
+  #scoreboard h2 { margin: 0 0 10px; font-size: 16px; letter-spacing: 2px; }
+  #sbMvp { color: #ffd27a; font-weight: 800; font-size: 13px; margin-bottom: 10px; }
+  .sbHead, .sbRow { display: grid; grid-template-columns: 1fr 40px 40px 70px; font-size: 13px; }
+  .sbHead { color: #9aa3b2; border-bottom: 1px solid #2c3648; padding-bottom: 4px; margin-bottom: 4px; }
+  .sbRow { padding: 2px 0; }
+  .sbName { font-weight: 700; }
+  /* ---------- Buy menu ---------- */
+  #buyMenu { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 460px; background: rgba(10, 14, 22, 0.92); border: 1px solid #3a4356;
+    padding: 18px 20px; pointer-events: auto; }
+  #buyMenu h2 { margin: 0 0 4px; font-size: 20px; letter-spacing: 2px; }
+  #buyCredits { color: #ffd27a; font-weight: 800; margin-bottom: 10px; }
+  .buyItem { display: flex; justify-content: space-between; align-items: center; width: 100%;
+    background: #1a2230; color: #eef1f5; border: 1px solid #2c3648; padding: 9px 12px;
+    margin-bottom: 6px; cursor: pointer; font-size: 14px; }
+  .buyItem:hover { background: #243145; }
+  .buyCat { font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #9aa3b2;
+    margin: 10px 0 6px; }
+  .buyCat:first-child { margin-top: 0; }
+  .buyItem.owned { border-color: #4ade80; }
+  .buyItem.owned .buyPrice { color: #4ade80; }
+  .buyItem.poor { opacity: 0.45; }
+  .buyName { font-weight: 700; }
+  .buyKind { color: #9aa3b2; }
+  .buyPrice { color: #ffd27a; font-weight: 800; }
+  .buyKeys { font-size: 12px; color: #9aa3b2; margin-top: 8px; }
+  /* ---------- Screens ---------- */
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: rgba(6, 10, 18, 0.72); }
+  .screen h1 { font-size: 64px; margin: 0; letter-spacing: 8px; color: #ffb020;
+    text-shadow: 0 3px 18px rgba(255, 140, 26, 0.45); }
+  .screen h2 { font-size: 15px; color: #9aa3b2; letter-spacing: 3px; margin: 8px 0 22px; font-weight: 600; }
+  .screen p { max-width: 560px; line-height: 1.6; color: #dfe5ee; margin: 6px 0; }
+  .screen .keys { font-size: 13px; color: #9aa3b2; margin-top: 14px; line-height: 1.9; }
+  .bigBtn { margin-top: 26px; font-size: 20px; font-weight: 800; letter-spacing: 2px;
+    padding: 14px 44px; background: #ff8c1a; color: #14100a; border: none; cursor: pointer; }
+  .bigBtn:hover { background: #ffa63d; }
+  #matchTitle.lose { color: #ff6b5e; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="radarBox">
+    <canvas id="radar" width="150" height="150"></canvas>
+    <div id="callout">Ironworks</div>
+    <div id="radarAlive"></div>
+  </div>
+  <div id="topbar">
+    <div id="timer">STEEL STRIKE</div>
+    <div id="scoreLine">EMBER 0 — 0 AEGIS</div>
+    <div id="roundLine">ROUND 1 / 24</div>
+    <div id="aliveLine"></div>
+  </div>
+  <div id="killfeed"></div>
+  <div id="bl">
+    <div class="barLabel"><span>HEALTH</span><span id="healthNum">100</span></div>
+    <div class="bar"><div id="healthFill" style="width:100%"></div></div>
+    <div class="barLabel"><span>ARMOR</span><span id="armorNum">0</span></div>
+    <div class="bar"><div id="armorFill" style="width:0%"></div></div>
+  </div>
+  <div id="br">
+    <div><span id="ammoMag">12</span><span id="ammoRes"> / 36</span></div>
+    <div id="weaponName">P-10 Falcon</div>
+    <div id="nades"></div>
+    <div id="credits">$800</div>
+  </div>
+  <div id="deviceTag" class="hidden">◆ DEVICE — PLANT AT A OR B</div>
+  <div id="crosshair"><div class="dot"></div></div>
+  <div id="hitmarker"></div>
+  <div id="scope" class="hidden"></div>
+  <div id="flash"></div>
+  <div id="spectate" class="hidden"><span id="spectateText"></span></div>
+  <div id="plantBar" class="hidden">
+    <div id="plantLabel">PLANTING</div>
+    <div class="bar"><div id="plantFill" style="width:0%"></div></div>
+  </div>
+  <div id="hint" class="hidden"></div>
+  <div id="banner" class="hidden">
+    <div id="bannerMain"></div>
+    <div id="bannerSub"></div>
+  </div>
+  <div id="scoreboard" class="hidden">
+    <h2>SCOREBOARD</h2>
+    <div id="sbMvp"></div>
+    <div class="sbHead"><span>EMBER</span><span>K</span><span>D</span><span>$</span></div>
+    <div id="sbAtk"></div>
+    <div class="sbHead" style="margin-top:10px"><span>AEGIS</span><span>K</span><span>D</span><span>$</span></div>
+    <div id="sbDef"></div>
+  </div>
+  <div id="buyMenu" class="hidden">
+    <h2>BUY WEAPONS</h2>
+    <div id="buyCredits">Credits: $800</div>
+    <div id="buyList"></div>
+    <div class="buyKeys">1–5 weapons · 6 armor / knife · 7 helmet / flash · 8 kit / smoke · 9 flash / frag · 0 smoke / fire · B close · wheel cycles weapons</div>
+  </div>
+</div>
+
+<div id="startScreen" class="screen">
+  <h1>STEEL STRIKE</h1>
+  <h2>TACTICAL FPS · MAP: IRONWORKS</h2>
+  <p>Five versus five. Attackers plant the device at <b>Site A — Furnace Hall</b> or
+  <b>Site B — Crane Yard</b>; defenders hold the sites and defuse it. Win rounds to earn
+  credits, buy better weapons between rounds, and take the match — first to 13 rounds (MR12).</p>
+  <p class="keys">WASD move · Mouse aim · Click shoot · Right-click scope (sniper / marksman only)<br>
+  R reload · E plant / defuse · B buy menu · 1–5 weapons · 6 knife · 7–0 grenades<br>
+  Shift silent walk · Ctrl / C crouch · Space jump · Wheel cycle weapons · Tab scoreboard · Esc pause</p>
+  <button id="playBtn" class="bigBtn">▶&nbsp; PLAY</button>
+</div>
+
+<div id="pauseScreen" class="screen hidden">
+  <h1 style="font-size:44px">PAUSED</h1>
+  <p>The round waits for you.</p>
+  <button id="resumeBtn" class="bigBtn">RESUME</button>
+</div>
+
+<div id="matchScreen" class="screen hidden">
+  <h1 id="matchTitle">VICTORY</h1>
+  <h2 id="matchSub"></h2>
+  <button id="restartBtn" class="bigBtn">PLAY AGAIN</button>
+</div>
+
+<p id="status" role="status" aria-live="polite"></p>
+<script type="importmap">{"imports": {"three": "./vendor/three.module.min.js"}}</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

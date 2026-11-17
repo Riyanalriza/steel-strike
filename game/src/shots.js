@@ -1,79 +1,105 @@
-// The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
-// fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
-// paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame
-// is what a short game really looks like and the same seed always gives the same frame.
-import { FIELD, PLAYER, STEP } from './config.js';
-import { EVENT_OVER, KIND_BLOCK } from './world.js';
-import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+// The screenshot scenes behind ?shot=start|play|end. Each one stages a real game
+// state (never a mock render): start shows the title over the map, play runs the
+// live rules forward for a fixed 10 s from a seeded RNG, end shows a won round at
+// Site A. Same seed, same frame — no wall clock is read anywhere in staging.
+import { STEP } from './config.js';
+import { collide, losBlocked } from './world.js';
 
-const START_SECONDS = 5;
-const PLAY_SECONDS = 26;
-const END_LIMIT_SECONDS = 600;
-/**
- * How far ahead, in seconds, the autopilot checks each way it could move: the play scene's pilot
- * looks well ahead and keeps all its lives; the end scene's looks only a moment ahead, so it is
- * caught out once the blocks speed up, as a hurried player is.
- */
-const HORIZON_PLAY = 0.7;
-const HORIZON_END = 0.25;
-const SAMPLE = 1 / 30;
-const DIRECTIONS = [0, -1, 1];
-/** Extra room, each side, it keeps between the paddle and a block. */
-const MARGIN = 10;
-
-/** Seconds until moving in `direction` (-1, 0, 1) runs the paddle into a block; Infinity when it never does. */
-function timeToHit(state, direction, horizon) {
-  const player = state.player;
-  for (let t = SAMPLE; t <= horizon; t += SAMPLE) {
-    const x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * t));
-    for (let index = 0; index < state.items.length; index += 1) {
-      const item = state.items[index];
-      if (!item.active || item.kind !== KIND_BLOCK) continue;
-      const y = item.y + item.speed * t;
-      if (y + item.height > player.y && y < player.y + player.height && item.x < x + player.width + MARGIN && item.x + item.width > x - MARGIN) return t;
-    }
+// Fixed-step the live game forward with the player standing still; bots play.
+function simulate(game, seconds) {
+  const steps = Math.round(seconds / STEP);
+  for (let i = 0; i < steps; i++) {
+    if (game.phase !== 'live') break;
+    game.step(STEP);
   }
-  return Infinity;
 }
 
-/** Of the safe ways to move, the one toward the lowest coin (or the centre); else the one that is hit last. */
-function autopilot(state, horizon) {
-  const player = state.player;
-  let coin = null;
-  for (let index = 0; index < state.items.length; index += 1) {
-    const item = state.items[index];
-    if (item.active && item.kind !== KIND_BLOCK && (coin === null || item.y > coin.y)) coin = item;
-  }
-  const target = coin === null ? FIELD.width / 2 : coin.x + coin.width / 2;
-  const centre = player.x + player.width / 2;
-  const wanted = target > centre + 8 ? 1 : target < centre - 8 ? -1 : 0;
-  let best = wanted;
-  let bestTime = timeToHit(state, wanted, horizon);
-  for (let index = 0; index < DIRECTIONS.length && bestTime !== Infinity; index += 1) {
-    const time = timeToHit(state, DIRECTIONS[index], horizon);
-    if (time > bestTime) {
-      bestTime = time;
-      best = DIRECTIONS[index];
+export function stageShot(name, game, hud) {
+  if (name === 'play') {
+    game.startMatch();
+    game.phaseT = 0;
+    game.phase = 'live';
+    game.roundT = 82;
+    game.buyOpen = false;
+    game.debugNoLock = true;
+    // The player waits at spawn during the sim (out of the fight, so the cover
+    // frame is not a death cam); the camera cuts to the action afterwards.
+    simulate(game, 10);
+    // Frame a real firefight: the closest attacker/defender pair with line of
+    // sight between them. Camera angle only — both bots stand where the sim
+    // put them. (A fixed camera kept landing on empty walls: the foes were
+    // behind cover; a camera straight behind the attacker hid the defender
+    // behind the attacker's back; a camera at the pair's midpoint could not
+    // fit both bots in frame.) So the camera stands behind the attacker and
+    // off to the side of the pair line, looking at the defender — the
+    // attacker stays in frame off-centre, the defender centred. The camera
+    // point must be free space: try several back/side offsets and keep the
+    // first one collide() leaves untouched.
+    let best = null, bestD = 30;
+    for (const a of game.bots.filter((b) => b.alive && b.team === 'atk')) {
+      for (const d of game.bots.filter((b) => b.alive && b.team === 'def')) {
+        const dist = Math.hypot(a.x - d.x, a.z - d.z);
+        if (dist < bestD && !losBlocked(a.x, a.z, d.x, d.z)) { bestD = dist; best = { a, d }; }
+      }
     }
+    let framed = false;
+    if (best) {
+      const dx = best.d.x - best.a.x, dz = best.d.z - best.a.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const ux = dx / len, uz = dz / len;
+      const px2 = -uz, pz2 = ux;
+      for (const back of [5, 6.5, 4]) {
+        for (const side of [2.5, -2.5, 1.5, -1.5, 0]) {
+          const px = best.a.x - ux * back + px2 * side;
+          const pz = best.a.z - uz * back + pz2 * side;
+          const [cx, cz] = collide(px, pz, 0.42);
+          if (cx === px && cz === pz) {
+            game.player.x = cx; game.player.z = cz;
+            const tdx = best.d.x - cx, tdz = best.d.z - cz;
+            game.player.yaw = Math.atan2(-tdx, -tdz);
+            game.player.pitch = Math.atan2(1.1 - game.player.eyeY, Math.hypot(tdx, tdz));
+            framed = true;
+            break;
+          }
+        }
+        if (framed) break;
+      }
+    }
+    if (!framed) {
+      game.player.x = 0; game.player.z = -6; game.player.yaw = 0; game.player.pitch = 0.02;
+    }
+    game.renderer.clearTracers();
+    game.renderer.clearFlash();
+    hud.hideBanner();
+    hud.screen(null);
+    return;
   }
-  return best;
-}
-
-/**
- * Set `world` to the named scene (start, play or end; any other name is start) and return the
- * screen to draw over it and the best score to show.
- */
-export function stageShot(name, world) {
-  world.reset();
-  if (name !== 'play' && name !== 'end') {
-    for (let index = 0; index < START_SECONDS / STEP; index += 1) world.step(STEP, 0, true);
-    return { screen: SCREEN_TITLE, best: 0 };
+  if (name === 'end') {
+    game.startMatch();
+    game.score = { atk: 1, def: 0 };
+    game.phase = 'roundEnd';
+    game.phaseT = 5;
+    game.devicePlanted = true;
+    game.deviceSite = 'A';
+    game.devicePos = { x: -22, z: -10 };
+    game.deviceFuseLeft = 24;
+    game.playerCarriesDevice = false;
+    game.renderer.setDevice(-22, -10, true);
+    game.renderer.clearTracers();
+    game.renderer.clearFlash();
+    // Player inside Site A, looking at the planted device; bots nearby. The
+    // camera must stand inside the site and clear of the tall crate at
+    // (-20.8..-19.2, -8.2..-6.8): from (-19,-4) that crate filled the frame
+    // and hid the device behind it.
+    game.player.x = -21; game.player.z = -4; game.player.yaw = 0.17; game.player.pitch = -0.1;
+    for (const b of game.bots.slice(0, 3)) {
+      b.x = -24 + b.id; b.z = -7 - b.id * 0.5; b.yaw = 2.4; b.alive = true; b.dead = false;
+    }
+    hud.screen(null);
+    hud.banner('ROUND WON', 'Device detonated at Furnace Hall  ·  EMBER 1 — 0 AEGIS', '#7dff8a');
+    return;
   }
-  const limit = name === 'end' ? END_LIMIT_SECONDS : PLAY_SECONDS;
-  const horizon = name === 'end' ? HORIZON_END : HORIZON_PLAY;
-  for (let index = 0; index < limit / STEP; index += 1) {
-    if (world.step(STEP, autopilot(world.state, horizon), false) & EVENT_OVER) break;
-  }
-  const over = world.state.lives === 0;
-  return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
+  // start (default): title screen over a slow orbit of the map.
+  game.phase = 'menu';
+  hud.screen('startScreen');
 }

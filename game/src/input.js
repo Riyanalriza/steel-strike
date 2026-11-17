@@ -1,53 +1,97 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
-
-export const ACTION_CONFIRM = 1;
+// FPS input: WASD + mouse look with pointer lock, fire, ADS, reload, use (E),
+// buy toggle (B), pause (Esc/P). Mouse deltas accumulate between frames; one-shot
+// presses are queued so a press between two frames is never lost.
+export const ACTION_RELOAD = 1;
 export const ACTION_PAUSE = 2;
+export const ACTION_BUY = 4;
+export const ACTION_RESTART = 8;
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
-
-export function createInput(target) {
-  let left = false;
-  let right = false;
+export function createInput(canvas, onLockChange) {
+  const keys = new Set();
   let actions = 0;
+  let mouseDX = 0, mouseDY = 0;
+  let fireHeld = false;
+  let firePressed = false;
+  let adsHeld = false;
+  let locked = false;
+  let wheelDir = 0;
 
   window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
+    if (event.repeat) return;
+    keys.add(event.code);
+    if (event.code === 'KeyR') actions |= ACTION_RELOAD;
+    else if (event.code === 'KeyB') actions |= ACTION_BUY;
+    else if (event.code === 'Escape' || event.code === 'KeyP') actions |= ACTION_PAUSE;
+    else if (event.code === 'Enter') actions |= ACTION_RESTART;
+    if (['Space', 'Tab'].includes(event.code)) event.preventDefault();
+  });
+  window.addEventListener('keyup', (event) => keys.delete(event.code));
+  window.addEventListener('blur', () => { keys.clear(); fireHeld = false; adsHeld = false; });
+  document.addEventListener('pointerlockchange', () => {
+    locked = document.pointerLockElement === canvas;
+    if (onLockChange) onLockChange(locked);
+  });
+  document.addEventListener('mousemove', (event) => {
+    if (!locked) return;
+    mouseDX += event.movementX;
+    mouseDY += event.movementY;
+  });
+  canvas.addEventListener('mousedown', (event) => {
+    if (!locked) return;
+    if (event.button === 0) { fireHeld = true; firePressed = true; }
+    if (event.button === 2) adsHeld = true;
+  });
+  window.addEventListener('mouseup', (event) => {
+    if (event.button === 0) fireHeld = false;
+    if (event.button === 2) adsHeld = false;
+  });
+  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  canvas.addEventListener('wheel', (event) => {
+    wheelDir += event.deltaY > 0 ? 1 : -1;
     event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    left = false;
-    right = false;
-  });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
-  });
+  }, { passive: false });
 
   return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
+    get locked() { return locked; },
+    lock() {
+      try { canvas.requestPointerLock(); } catch { /* headless or denied */ }
     },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
+    unlock() {
+      try { document.exitPointerLock(); } catch { /* noop */ }
+    },
+    move() {
+      const f = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+      const s = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+      return {
+        f, s,
+        jump: keys.has('Space'),
+        // No sprint: Shift is a slow silent walk; Ctrl/C is a crouch.
+        slow: keys.has('ShiftLeft') || keys.has('ShiftRight'),
+        crouch: keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyC'),
+        use: keys.has('KeyE'),
+      };
+    },
+    takeWheel() {
+      const d = wheelDir;
+      wheelDir = 0;
+      return d;
+    },
+    scoreboard() { return keys.has('Tab'); },
+    takeMouse() {
+      const d = { dx: mouseDX, dy: mouseDY };
+      mouseDX = 0; mouseDY = 0;
+      return d;
+    },
     takeActions() {
       const taken = actions;
       actions = 0;
       return taken;
     },
+    takeFire() {
+      const pressed = firePressed;
+      firePressed = false;
+      return { held: fireHeld, pressed };
+    },
+    get ads() { return adsHeld; },
   };
 }
