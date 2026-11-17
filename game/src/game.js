@@ -583,6 +583,7 @@ export function createGame(renderer, hud, input, rng) {
       }
     }
     renderer.muzzleAt(muzzleOf(shooter));
+    if (shooter.isPlayer) renderer.flashVM();
     if (shooter.isPlayer) sfx.shot(weapon.kind.toLowerCase());
     else {
       const d = Math.hypot(shooter.x - game.player.x, shooter.z - game.player.z);

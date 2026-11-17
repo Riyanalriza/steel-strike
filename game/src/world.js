@@ -71,6 +71,18 @@ export const SOLIDS = [
   // over the low crates. (Needs height-aware collision — see collide/groundAt.)
   { x0: -3, z0: 6, x1: -1, z1: 7.5, h: 1.0, kind: 'crate' },
   { x0: -3, z0: 8, x1: -1, z1: 10, h: 2.0, kind: 'crate' },
+  // Barrels (cylinders), sandbags and site containers: visual cover with real
+  // collision. All sit off the bot waypoint lines (checked vs NODES/EDGES).
+  { x0: -30.2, z0: 17.4, x1: -29.3, z1: 18.3, h: 1.05, kind: 'crate', shape: 'cyl' },
+  { x0: 29.3, z0: 17.4, x1: 30.2, z1: 18.3, h: 1.05, kind: 'crate', shape: 'cyl' },
+  { x0: -30.2, z0: -20.6, x1: -29.3, z1: -19.7, h: 1.05, kind: 'crate', shape: 'cyl' },
+  { x0: 29.3, z0: -20.6, x1: 30.2, z1: -19.7, h: 1.05, kind: 'crate', shape: 'cyl' },
+  { x0: -17.2, z0: -12.6, x1: -16.3, z1: -11.7, h: 1.05, kind: 'crate', shape: 'cyl' },
+  { x0: 16.3, z0: -12.6, x1: 17.2, z1: -11.7, h: 1.05, kind: 'crate', shape: 'cyl' },
+  { x0: -26.3, z0: -7.4, x1: -24.7, z1: -6.6, h: 0.8, kind: 'crate', tex: 'sand' },
+  { x0: 24.7, z0: -7.4, x1: 26.3, z1: -6.6, h: 0.8, kind: 'crate', tex: 'sand' },
+  { x0: 20, z0: -24.6, x1: 24, z1: -22.8, h: 2.4, kind: 'crate', tex: 'contB' },
+  { x0: -24, z0: -24.6, x1: -20, z1: -22.8, h: 2.4, kind: 'crate', tex: 'contA' },
 ];
 
 export const SITES = {
