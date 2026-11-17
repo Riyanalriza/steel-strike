@@ -245,6 +245,15 @@ export function createRenderer(canvas, rng) {
     decal.rotation.x = -Math.PI / 2;
     decal.position.set(site.cx, 0.02, site.cz);
     scene.add(decal);
+    // Painted floor letter, like the site letters on a CS map: reads from
+    // above (start shot) and around the device (end shot).
+    const floorLetter = new THREE.Mesh(
+      new THREE.PlaneGeometry(5, 5),
+      new THREE.MeshBasicMaterial({ map: letterTexture(key, color), transparent: true, opacity: 0.8 }),
+    );
+    floorLetter.rotation.x = -Math.PI / 2;
+    floorLetter.position.set(site.cx, 0.035, site.cz);
+    scene.add(floorLetter);
   }
   // Furnace glow at Site A, crane frame at Site B.
   const furnace = new THREE.Mesh(
@@ -394,7 +403,7 @@ export function createRenderer(canvas, rng) {
   pipe(19, 2.6, -4.9, 4, true);
   hzStrip(-19, 0.55, -4.96, 4, 0.4, 0);
   hzStrip(19, 0.55, -4.96, 4, 0.4, 0);
-  for (const [vx, vz] of [[-20.5, -4.9], [20.5, -4.9]]) {
+  for (const [vx, vz] of [[-17.6, -4.9], [17.6, -4.9]]) {
     const vp = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 8), pipeMat);
     vp.position.set(vx, 1.6, vz);
     scene.add(vp);
@@ -455,7 +464,8 @@ export function createRenderer(canvas, rng) {
   const VM_SPECS = {
     pistol: { tip: -0.24, gripZ: 0.02, parts: [
       [0.07, 0.08, 0.26, 0, 0.03, -0.08, 0x3a4048], [0.06, 0.15, 0.08, 0, -0.08, 0.04, 0x2c2f34, 0.28],
-      [0.02, 0.03, 0.03, 0, 0.085, -0.18, 0x1a1c20]] },
+      [0.02, 0.03, 0.03, 0, 0.085, -0.18, 0x1a1c20], [0.05, 0.03, 0.02, 0, 0.08, 0.03, 0x1a1c20],
+      [0.072, 0.015, 0.22, 0, 0.075, -0.07, 0x8a8f96]] },
     heavy: { tip: -0.36, gripZ: 0.02, parts: [
       [0.08, 0.09, 0.32, 0, 0.03, -0.1, 0x4a4f57], [0.03, 0.03, 0.1, 0, 0.03, -0.3, 0x8a8f96, 0, 1],
       [0.07, 0.16, 0.09, 0, -0.09, 0.04, 0x2c2f34, 0.28]] },
@@ -618,7 +628,7 @@ export function createRenderer(canvas, rng) {
       bx(0.32, 0.3, 0.32, 0x5a4f33, 0, 1.42, 0);
       bx(0.3, 0.08, 0.06, 0x4a3f28, 0, 1.32, 0.15);
     }
-    bx(0.24, 0.07, 0.04, teamColor, 0, 1.42, 0.15);
+    bx(0.3, 0.09, 0.04, teamColor, 0, 1.42, 0.15);
     // Arms pivoted at the shoulders, angled forward so the gloves meet the
     // gun: left arm reaches the foregrip, right arm the trigger grip.
     const arms = [];
@@ -632,12 +642,16 @@ export function createRenderer(canvas, rng) {
       group.add(arm);
       arms.push(arm);
     }
-    // Gun: receiver + barrel + mag, scaled by BOT_GUN in syncBots.
+    // Gun: receiver + barrel + mag, scaled by BOT_GUN in syncBots. Thick
+    // and canted ~13 deg so it reads from dead front, not just the side:
+    // a thin dark barrel aimed at the viewer foreshortens to a dot.
     const gun = new THREE.Group();
-    bx(0.07, 0.11, 0.36, 0x14161a, 0, 0, 0, gun);
-    bx(0.03, 0.03, 0.3, 0x22252a, 0, 0.02, -0.3, gun);
-    bx(0.05, 0.15, 0.07, 0x23262b, 0, -0.12, 0.05, gun);
+    bx(0.12, 0.14, 0.36, 0x14161a, 0, 0, 0, gun);
+    bx(0.05, 0.05, 0.3, 0x22252a, 0, 0.02, -0.3, gun);
+    bx(0.06, 0.15, 0.08, 0x4a4f57, 0, -0.12, 0.05, gun);
+    bx(0.09, 0.09, 0.16, 0x6b4a2a, 0, -0.05, -0.22, gun); // wood foregrip
     gun.position.set(0.08, 1.0, 0.32);
+    gun.rotation.y = 0.22;
     group.add(gun);
     return { group, torso, head, gun, arms };
   }
