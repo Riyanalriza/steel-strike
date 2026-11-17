@@ -93,7 +93,7 @@ export function stageShot(name, game, hud) {
     // and hid the device behind it.
     game.player.x = -21; game.player.z = -4; game.player.yaw = 0.17; game.player.pitch = -0.1;
     for (const b of game.bots.slice(0, 3)) {
-      b.x = -24 + b.id; b.z = -7 - b.id * 0.5; b.yaw = 2.4; b.alive = true; b.dead = false;
+      b.x = -24 + b.id; b.z = -7 - b.id * 0.5; b.yaw = -2.4 - b.id * 0.25; b.alive = true; b.dead = false;
     }
     hud.screen(null);
     hud.banner('ROUND WON', 'Device detonated at Furnace Hall  ·  EMBER 1 — 0 AEGIS', '#7dff8a');

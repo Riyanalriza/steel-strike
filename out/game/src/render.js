@@ -107,6 +107,20 @@ function ventTexture() {
   });
 }
 
+// Yellow/black diagonal hazard stripes: site thresholds, wall bands.
+function hazardTexture() {
+  return canvasTexture(128, (g, s) => {
+    g.fillStyle = '#c9a227'; g.fillRect(0, 0, s, s);
+    g.fillStyle = '#16181c';
+    for (let i = -2; i < 4; i++) {
+      g.beginPath();
+      g.moveTo(i * 42, s); g.lineTo(i * 42 + 42, 0);
+      g.lineTo(i * 42 + 63, 0); g.lineTo(i * 42 + 21, s);
+      g.fill();
+    }
+  });
+}
+
 function signTexture(text, color) {
   return canvasTexture(512, (g, s) => {
     g.clearRect(0, 0, s, s);
@@ -314,16 +328,77 @@ export function createRenderer(canvas, rng) {
     scene.add(pool);
   }
   // Area signs over the site entrances.
-  function sign(x, y, z, text, color) {
+  function sign(x, y, z, text, color, ry) {
     const s = new THREE.Mesh(
       new THREE.PlaneGeometry(6, 3),
       new THREE.MeshBasicMaterial({ map: signTexture(text, color), transparent: true }),
     );
     s.position.set(x, y, z);
+    if (ry) s.rotation.y = ry;
     scene.add(s);
   }
   sign(-22.5, 3.1, -5.3, 'A · FURNACE HALL', '#ff8c1a');
   sign(22.5, 3.1, -5.3, 'B · CRANE YARD', '#2f9dff');
+  // Direction sign over the Iron Doors, seen from mid.
+  sign(0, 2.9, -12.9, '← A        B →', '#ffd27a');
+
+  // Hazard stripes: floor thresholds at the doors and site entrances, and
+  // bands on the plain site walls (the end shot's right side was bare panel).
+  function hzStrip(x, y, z, w, h, flat) {
+    const t = hazardTexture();
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(Math.max(1, Math.round(w / 0.8)), 1);
+    const s = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ map: t }));
+    if (flat === true) s.rotation.x = -Math.PI / 2; else s.rotation.y = flat;
+    s.position.set(x, y, z);
+    scene.add(s);
+  }
+  hzStrip(0, 0.02, -13.4, 4, 0.5, true);        // Iron Doors threshold
+  hzStrip(-22.5, 0.02, -5.4, 3, 0.5, true);     // Site A south entrance
+  hzStrip(-17.4, 0.02, -9.5, 0.5, 3, true);     // Site A east entrance
+  hzStrip(22.5, 0.02, -5.4, 3, 0.5, true);      // Site B south entrance
+  hzStrip(17.4, 0.02, -9.5, 0.5, 3, true);      // Site B west entrance
+  // Furnace Hall east wall (faces the site) and Crane Yard west wall: a
+  // pipe run, a vertical pipe, a hazard band and a big site letter each.
+  pipe(-16.9, 2.6, -10, 9, false);
+  pipe(16.9, 2.6, -10, 9, false);
+  for (const [vx, vz] of [[-16.9, -12.8], [16.9, -12.8]]) {
+    const vp = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 8), pipeMat);
+    vp.position.set(vx, 1.6, vz);
+    scene.add(vp);
+  }
+  // Both faces of each site wall: the approach side (seen from mid) and the
+  // site side. Rotation +PI/2 faces +x (east), -PI/2 faces -x (west) — the
+  // old single-sided strips faced into the wall and were invisible.
+  hzStrip(-16.96, 0.55, -13, 4, 0.4, Math.PI / 2);
+  hzStrip(-16.96, 0.55, -6.5, 3, 0.4, Math.PI / 2);
+  hzStrip(-18.04, 0.55, -13, 4, 0.4, -Math.PI / 2);
+  hzStrip(-18.04, 0.55, -6.5, 3, 0.4, -Math.PI / 2);
+  hzStrip(18.04, 0.55, -13, 4, 0.4, Math.PI / 2);
+  hzStrip(18.04, 0.55, -6.5, 3, 0.4, Math.PI / 2);
+  hzStrip(16.96, 0.55, -13, 4, 0.4, -Math.PI / 2);
+  hzStrip(16.96, 0.55, -6.5, 3, 0.4, -Math.PI / 2);
+  sign(-16.95, 2.2, -10, 'A', '#ff8c1a', Math.PI / 2);
+  sign(-18.05, 2.2, -10, 'A', '#ff8c1a', -Math.PI / 2);
+  sign(18.05, 2.2, -10, 'B', '#2f9dff', Math.PI / 2);
+  sign(16.95, 2.2, -10, 'B', '#2f9dff', -Math.PI / 2);
+  // Pipes on the approach side of the Furnace Hall east wall too.
+  pipe(-18.1, 2.6, -10, 9, false);
+  const vpA = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 8), pipeMat);
+  vpA.position.set(-18.1, 1.6, -12.8);
+  scene.add(vpA);
+  // Site south walls, south face (the approach side the end shot looks at):
+  // a pipe run, a hazard band and a vertical pipe by the entrance gap, so
+  // the close wall in the end shot is not bare panel. Same mirrored at B.
+  pipe(-19, 2.6, -4.9, 4, true);
+  pipe(19, 2.6, -4.9, 4, true);
+  hzStrip(-19, 0.55, -4.96, 4, 0.4, 0);
+  hzStrip(19, 0.55, -4.96, 4, 0.4, 0);
+  for (const [vx, vz] of [[-20.5, -4.9], [20.5, -4.9]]) {
+    const vp = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 8), pipeMat);
+    vp.position.set(vx, 1.6, vz);
+    scene.add(vp);
+  }
 
   // Iron Doors frame (visual only) and roof beams over Crane Tunnel.
   const propMat = new THREE.MeshLambertMaterial({ color: 0x3a3f47 });
@@ -361,10 +436,19 @@ export function createRenderer(canvas, rng) {
   function vmHand(x, y, z) {
     const g = new THREE.Group();
     const glove = new THREE.MeshLambertMaterial({ color: 0x9a8a6a });
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.11, 0.07), glove));
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.08, 0.055), glove);
-    fin.position.set(0, -0.015, -0.05);
+    // Palm + curled fingers + thumb, ~1.5x the old size so the grip reads.
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.15, 0.1), glove));
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.11, 0.09), glove);
+    fin.position.set(0, -0.02, -0.07);
     g.add(fin);
+    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.09, 0.06), glove);
+    thumb.position.set(0.07, 0.02, -0.02);
+    g.add(thumb);
+    // Forearm stub sloping down toward the player, so the hand is attached.
+    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.09, 0.26), glove);
+    fore.position.set(0.01, -0.06, 0.16);
+    fore.rotation.x = 0.5;
+    g.add(fore);
     g.position.set(x, y, z);
     return g;
   }
@@ -493,9 +577,12 @@ export function createRenderer(canvas, rng) {
   // Bot bodies, keyed by bot id.
   const botMeshes = new Map();
   // Two squads, clearly different silhouettes, all procedural: defenders wear
-  // blue-grey tactical kit with helmets/caps and vests; attackers wear
-  // tan-olive kit with hoods/balaclavas and vests. Three variants per side
-  // (shade + headgear) so a squad reads as individuals.
+  // blue-grey tactical kit with helmets and vests; attackers wear tan-olive
+  // kit with hoods/balaclavas and vests. Three shades per side so a squad
+  // reads as individuals. Legs, arms and a three-part gun replace the old
+  // single-block body: the silhouette is human, and the arms aim the gun
+  // where the bot looks. Torso + head stay the only raycast targets, so
+  // hit registration is unchanged.
   function makeBotMesh(teamKey, variant) {
     const teamColor = TEAMS[teamKey].color;
     const group = new THREE.Group();
@@ -503,55 +590,56 @@ export function createRenderer(canvas, rng) {
       ? [0x35608a, 0x2e5478, 0x3f6a94]
       : [0x8a7a4a, 0x7d7040, 0x94855a];
     const v = variant % 3;
-    const pants = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.5, 0.24), new THREE.MeshLambertMaterial({ color: 0x23262b }));
-    pants.position.y = 0.25;
-    group.add(pants);
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.62, 0.3), new THREE.MeshLambertMaterial({ color: shades[v] }));
-    torso.position.y = 0.82;
-    group.add(torso);
-    if (v !== 2) {
-      const vest = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.42, 0.08), new THREE.MeshLambertMaterial({ color: 0x2e3138 }));
-      vest.position.set(0, 0.85, 0.18);
-      group.add(vest);
-      // Chest pouches on the vest + shoulder pads.
-      for (const px of [-0.11, 0.11]) {
-        const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.16, 0.05), new THREE.MeshLambertMaterial({ color: 0x23262b }));
-        pouch.position.set(px, 0.82, 0.23);
-        group.add(pouch);
-      }
+    const kit = shades[v], dark = 0x23262b, gloveC = 0x9a8a6a;
+    function bx(w, h, d, c, x, y, z, parent) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: c }));
+      m.position.set(x, y, z);
+      (parent || group).add(m);
+      return m;
     }
-    for (const px of [-0.27, 0.27]) {
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.32), new THREE.MeshLambertMaterial({ color: shades[v] }));
-      pad.position.set(px, 1.1, 0);
-      group.add(pad);
+    // Two legs + boots, not a pillar.
+    for (const sx of [-1, 1]) {
+      bx(0.15, 0.52, 0.17, dark, sx * 0.1, 0.38, 0);
+      bx(0.16, 0.1, 0.26, 0x14161a, sx * 0.1, 0.05, 0.03);
     }
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.28, 0.3), new THREE.MeshLambertMaterial({ color: 0x2c2f36 }));
-    head.position.y = 1.32;
-    group.add(head);
+    // Belt, chest, vest + pouches, shoulder pads.
+    bx(0.48, 0.1, 0.3, dark, 0, 0.62, 0);
+    const torso = bx(0.5, 0.52, 0.28, kit, 0, 0.93, 0);
+    bx(0.4, 0.4, 0.08, 0x2e3138, 0, 0.95, 0.17);
+    for (const px of [-0.11, 0.11]) bx(0.13, 0.16, 0.05, dark, px, 0.92, 0.22);
+    for (const px of [-0.29, 0.29]) bx(0.13, 0.09, 0.32, kit, px, 1.14, 0);
+    // Neck, head, headgear, visor.
+    bx(0.12, 0.09, 0.12, 0x8a7a5e, 0, 1.23, 0);
+    const head = bx(0.28, 0.26, 0.28, 0x2c2f36, 0, 1.4, 0);
     if (teamKey === 'def') {
-      // Helmet (variants 0, 2) or cap (variant 1).
-      const helm = new THREE.Mesh(
-        new THREE.BoxGeometry(v === 1 ? 0.32 : 0.38, 0.12, 0.36),
-        new THREE.MeshLambertMaterial({ color: 0x3d4c5e }),
-      );
-      helm.position.y = v === 1 ? 1.44 : 1.48;
-      group.add(helm);
+      bx(0.36, 0.1, 0.34, 0x3d4c5e, 0, 1.54, 0);
+      bx(0.3, 0.04, 0.06, 0x2e3844, 0, 1.5, 0.17);
     } else {
-      // Hood (variants 0, 2) or balaclava band (variant 1).
-      const hood = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34, v === 1 ? 0.1 : 0.34, 0.34),
-        new THREE.MeshLambertMaterial({ color: 0x5a4f33 }),
-      );
-      hood.position.y = v === 1 ? 1.3 : 1.34;
-      group.add(hood);
+      bx(0.32, 0.3, 0.32, 0x5a4f33, 0, 1.42, 0);
+      bx(0.3, 0.08, 0.06, 0x4a3f28, 0, 1.32, 0.15);
     }
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.05), new THREE.MeshBasicMaterial({ color: teamColor }));
-    visor.position.set(0, 1.34, 0.16);
-    group.add(visor);
-    const gunMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.72), new THREE.MeshLambertMaterial({ color: 0x14161a }));
-    gunMesh.position.set(0.14, 0.95, 0.28);
-    group.add(gunMesh);
-    return { group, torso, head, gun: gunMesh };
+    bx(0.24, 0.07, 0.04, teamColor, 0, 1.42, 0.15);
+    // Arms pivoted at the shoulders, angled forward so the gloves meet the
+    // gun: left arm reaches the foregrip, right arm the trigger grip.
+    const arms = [];
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Group();
+      arm.position.set(sx * 0.29, 1.12, 0.02);
+      arm.rotation.x = sx < 0 ? -1.25 : -1.05;
+      arm.rotation.z = -sx * 0.35; // angle in, so the gloves meet the gun
+      bx(0.11, 0.4, 0.11, kit, 0, -0.2, 0, arm);
+      bx(0.11, 0.1, 0.12, gloveC, 0, -0.42, 0, arm);
+      group.add(arm);
+      arms.push(arm);
+    }
+    // Gun: receiver + barrel + mag, scaled by BOT_GUN in syncBots.
+    const gun = new THREE.Group();
+    bx(0.07, 0.11, 0.36, 0x14161a, 0, 0, 0, gun);
+    bx(0.03, 0.03, 0.3, 0x22252a, 0, 0.02, -0.3, gun);
+    bx(0.05, 0.15, 0.07, 0x23262b, 0, -0.12, 0.05, gun);
+    gun.position.set(0.08, 1.0, 0.32);
+    group.add(gun);
+    return { group, torso, head, gun, arms };
   }
 
   // Bot gun length/thickness by the weapon the bot actually carries.
@@ -730,8 +818,13 @@ export function createRenderer(canvas, rng) {
           m.group.position.y = 0.15;
         } else {
           m.group.rotation.z = 0;
-          // Walk bob.
+          // Walk bob + a small arm swing while moving.
           m.group.position.y = bot.moving ? Math.abs(Math.sin(now * 0.012 + bot.id)) * 0.04 : 0;
+          if (m.arms) {
+            const sw = bot.moving ? Math.sin(now * 0.012 + bot.id) * 0.12 : 0;
+            m.arms[0].rotation.x = -1.25 + sw;
+            m.arms[1].rotation.x = -1.05 - sw;
+          }
         }
       }
       // Tracers + flash fade.
